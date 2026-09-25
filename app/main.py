@@ -4,8 +4,12 @@ from fastapi import FastAPI, HTTPException, Header
 from pydantic import BaseModel
 import psycopg2
 from app.database import get_connection
+from fastapi.staticfiles import StaticFiles
 
 app = FastAPI(title="MiniPay API")
+
+
+
 
 
 class CustomerCreate(BaseModel):
@@ -139,3 +143,4 @@ def get_customer_payments(customer_id: int):
     finally:
         cur.close()
         conn.close()
+app.mount("/", StaticFiles(directory="app/static", html=True), name="static")
