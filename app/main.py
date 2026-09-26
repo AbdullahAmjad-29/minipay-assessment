@@ -1,15 +1,20 @@
+import os
 import uuid
 from datetime import datetime
-from fastapi import FastAPI, HTTPException, Header
+from fastapi import FastAPI, HTTPException, Header, Depends
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import psycopg2
 from app.database import get_connection
-from fastapi.staticfiles import StaticFiles
 
 app = FastAPI(title="MiniPay API")
 
+API_KEY = os.getenv("API_KEY")
 
 
+def require_api_key(x_api_key: str | None = Header(default=None, alias="X-API-Key")):
+    if not API_KEY or x_api_key != API_KEY:
+        raise HTTPException(status_code=401, detail="missing or invalid API key")
 
 
 class CustomerCreate(BaseModel):
@@ -37,7 +42,7 @@ def health():
 
 
 @app.post("/api/customers", status_code=201)
-def create_customer(customer: CustomerCreate):
+def create_customer(customer: CustomerCreate, _: None = Depends(require_api_key)):
     conn = get_connection()
     cur = conn.cursor()
     try:
@@ -60,6 +65,7 @@ def create_customer(customer: CustomerCreate):
 def create_payment(
     payment: PaymentCreate,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    _: None = Depends(require_api_key),
 ):
     conn = get_connection()
     cur = conn.cursor()
@@ -143,4 +149,6 @@ def get_customer_payments(customer_id: int):
     finally:
         cur.close()
         conn.close()
+
+
 app.mount("/", StaticFiles(directory="app/static", html=True), name="static")
