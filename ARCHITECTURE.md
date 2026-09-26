@@ -41,3 +41,29 @@ Postgres superuser — the app can only touch what it needs.
 - Every DB-touching endpoint explicitly rolls back on error before
   returning, so a failed request never leaves the connection in a broken
   transaction state for the next query.
+## Kubernetes
+
+Deployed to a local Minikube cluster (Docker driver). Minikube is fully self-contained here instead.
+
+Postgres runs as a StatefulSet, not a Deployment, backed by a PVC - a
+database needs a stable identity and storage that survives pod restarts,
+which a Deployment's interchangeable-pod model doesn't guarantee. The API
+is a plain Deployment, since it's stateless and fine to restart or scale
+freely.
+
+Two real bugs surfaced and got fixed during this build, both documented in
+detail in investigation/docker-postgres-connectivity.md:
+
+- Postgres's own liveness probe killed it mid-bulk-load, because the default
+  1 second probe timeout wasn't enough while it was legitimately busy.
+  Fixed by widening timeoutSeconds and failureThreshold.
+- The API had no dependency on Postgres being ready before it started, so
+  it occasionally lost the startup race and got killed by its own liveness
+  probe. Fixed with an init container that blocks on pg_isready until
+  Postgres actually accepts connections.
+
+The cluster-internal Postgres was seeded with a small manual dataset rather
+than the full 50k-row set used for local SQL work, since
+requirements/03-kubernetes-rancher.md doesn't call for any specific data
+volume in the cluster, and this was already the second unplanned detour
+into bulk-load mechanics rather than the deployment itself.
