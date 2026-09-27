@@ -51,3 +51,10 @@ against the real schema.sql, then deliberately added a migration
 properly, with the reasoning documented in ARCHITECTURE.md, instead of
 silently dropping the idempotency feature.
 
+6. Designed and debugged the SQL investigation queries, including root-causing the duplicate transaction_ref pattern to an off-by-one in generate_data.py, and the reconciliation gap between transaction/callback success.
+7. Built the Python support tool's anomaly-detection logic and unit tests; a test's own expectation was wrong once (caught and fixed the test, not the code) - see git history.
+8. Diagnosed INCIDENT-001 (intermittent 500s) through several real, escalating layers: no connection pooling -> pool size miscalibrated against Postgres's reserved-connection limit -> an uncaught exception type -> stale connections after a DB restart. Each layer found via real load tests and real tracebacks, not assumed.
+9. Built the Playwright UI suite; had to work around Playwright's Ubuntu-only --with-deps on this CentOS VM by installing the correct dnf packages manually.
+
+## Validation (cont.)
+Every fix in this project was verified against real command output (curl, EXPLAIN ANALYZE, pytest, kubectl) before being considered done, not accepted on the strength of the code looking correct.
