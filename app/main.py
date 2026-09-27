@@ -30,12 +30,10 @@ class PaymentCreate(BaseModel):
 @app.get("/health")
 def health():
     try:
-        conn = get_connection()
-        cur = conn.cursor()
-        cur.execute("SELECT 1;")
-        cur.fetchone()
-        cur.close()
-        conn.close()
+        with get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT 1;")
+            cur.fetchone()
         return {"status": "ok"}
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"database unavailable: {str(e)}")
@@ -43,22 +41,19 @@ def health():
 
 @app.post("/api/customers", status_code=201)
 def create_customer(customer: CustomerCreate, _: None = Depends(require_api_key)):
-    conn = get_connection()
-    cur = conn.cursor()
-    try:
-        cur.execute(
-            "INSERT INTO customers (customer_ref, name) VALUES (%s, %s) RETURNING id, customer_ref, name, created_at;",
-            (customer.customer_ref, customer.name),
-        )
-        row = cur.fetchone()
-        conn.commit()
-        return {"id": row[0], "customer_ref": row[1], "name": row[2], "created_at": row[3]}
-    except psycopg2.errors.UniqueViolation:
-        conn.rollback()
-        raise HTTPException(status_code=409, detail=f"customer_ref '{customer.customer_ref}' already exists")
-    finally:
-        cur.close()
-        conn.close()
+    with get_connection() as conn:
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                "INSERT INTO customers (customer_ref, name) VALUES (%s, %s) RETURNING id, customer_ref, name, created_at;",
+                (customer.customer_ref, customer.name),
+            )
+            row = cur.fetchone()
+            conn.commit()
+            return {"id": row[0], "customer_ref": row[1], "name": row[2], "created_at": row[3]}
+        except psycopg2.errors.UniqueViolation:
+            conn.rollback()
+            raise HTTPException(status_code=409, detail=f"customer_ref '{customer.customer_ref}' already exists")
 
 
 @app.post("/api/payments", status_code=201)
@@ -67,9 +62,9 @@ def create_payment(
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     _: None = Depends(require_api_key),
 ):
-    conn = get_connection()
-    cur = conn.cursor()
-    try:
+    with get_connection() as conn:
+        cur = conn.cursor()
+
         if idempotency_key:
             cur.execute(
                 "SELECT id, transaction_ref, customer_id, amount, status, created_at FROM transactions WHERE idempotency_key = %s;",
@@ -102,37 +97,32 @@ def create_payment(
             "id": row[0], "transaction_ref": row[1], "customer_id": row[2],
             "amount": float(row[3]), "status": row[4], "created_at": row[5],
         }
-    finally:
-        cur.close()
-        conn.close()
 
 
 @app.get("/api/payments/{transaction_ref}")
 def get_payment(transaction_ref: str):
-    conn = get_connection()
-    cur = conn.cursor()
     try:
-        cur.execute(
-            "SELECT id, transaction_ref, customer_id, amount, status, created_at, completed_at FROM transactions WHERE transaction_ref = %s;",
-            (transaction_ref,),
-        )
-        row = cur.fetchone()
-        if row is None:
-            raise HTTPException(status_code=404, detail=f"transaction '{transaction_ref}' not found")
-        return {
-            "id": row[0], "transaction_ref": row[1], "customer_id": row[2],
-            "amount": float(row[3]), "status": row[4], "created_at": row[5], "completed_at": row[6],
-        }
-    finally:
-        cur.close()
-        conn.close()
+        with get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT id, transaction_ref, customer_id, amount, status, created_at, completed_at FROM transactions WHERE transaction_ref = %s;",
+                (transaction_ref,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                raise HTTPException(status_code=404, detail=f"transaction '{transaction_ref}' not found")
+            return {
+                "id": row[0], "transaction_ref": row[1], "customer_id": row[2],
+                "amount": float(row[3]), "status": row[4], "created_at": row[5], "completed_at": row[6],
+            }
+    except (psycopg2.pool.PoolError, psycopg2.OperationalError):
+        raise HTTPException(status_code=503, detail="database connection pool exhausted, please retry")
 
 
 @app.get("/api/customers/{customer_id}/payments")
 def get_customer_payments(customer_id: int):
-    conn = get_connection()
-    cur = conn.cursor()
-    try:
+    with get_connection() as conn:
+        cur = conn.cursor()
         cur.execute("SELECT id FROM customers WHERE id = %s;", (customer_id,))
         if cur.fetchone() is None:
             raise HTTPException(status_code=404, detail=f"customer_id {customer_id} not found")
@@ -146,9 +136,6 @@ def get_customer_payments(customer_id: int):
             {"id": r[0], "transaction_ref": r[1], "amount": float(r[2]), "status": r[3], "created_at": r[4]}
             for r in rows
         ]
-    finally:
-        cur.close()
-        conn.close()
 
 
 app.mount("/", StaticFiles(directory="app/static", html=True), name="static")
