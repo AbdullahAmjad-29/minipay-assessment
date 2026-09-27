@@ -8,3 +8,5 @@ node_modules/
 seed.sql
 .DS_Store
 *.log
+test-results/
+tests/ui/report.html
