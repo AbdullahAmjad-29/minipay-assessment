@@ -67,3 +67,14 @@ than the full 50k-row set used for local SQL work, since
 requirements/03-kubernetes-rancher.md doesn't call for any specific data
 volume in the cluster, and this was already the second unplanned detour
 into bulk-load mechanics rather than the deployment itself.
+## SQL
+7 required queries in sql/. Composite index added on transactions(status, created_at) - see sql/PERFORMANCE.md for honest before/after EXPLAIN ANALYZE (no timing win at 50k rows/5% selectivity, but correct at production scale per Rows Removed by Filter evidence).
+
+## Python support tool
+Direct DB access (not via API) - deliberate, so it works even if the API itself is down. Pure-function anomaly detection (testable without a DB), 8 unit tests.
+
+## API auth & connection pooling
+Simple X-API-Key header on mutating endpoints only (reads/health stay open for K8s probes). Real psycopg2 connection pool added after INCIDENT-001 (see investigation/INCIDENT-001-RCA.md) - no auth or pooling existed before that incident's investigation.
+
+## UI tests
+Playwright, 5 journeys, data-testid selectors. No login journey - app has no per-user UI auth (API key is service-level only), deliberate scope decision.
